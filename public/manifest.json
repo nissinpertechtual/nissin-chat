@@ -1,0 +1,16 @@
+{
+  "name": "NissinChat",
+  "short_name": "NissinChat",
+  "description": "社内チャットアプリ",
+  "theme_color": "#06C755",
+  "background_color": "#ffffff",
+  "display": "standalone",
+  "start_url": "/",
+  "icons": [
+    {
+      "src": "/favicon.svg",
+      "type": "image/svg+xml",
+      "sizes": "any"
+    }
+  ]
+}
