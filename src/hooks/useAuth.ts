@@ -9,57 +9,70 @@ export const useAuth = () => {
   const { currentUser, setCurrentUser } = useAppStore()
 
   useEffect(() => {
-    const init = async () => {
-      try {
-        const { data: { session } } = await supabase.auth.getSession()
-        if (session?.user) {
-          await fetchOrCreateProfile(session.user)
+    // Always stop loading after 3 seconds max
+    const timeout = setTimeout(() => setLoading(false), 3000)
+
+    supabase.auth.getSession().then(async ({ data: { session } }: any) => {
+      if (session?.user) {
+        try {
+          const { data } = await db.from('profiles').select('*').eq('id', session.user.id).maybeSingle()
+          if (data) {
+            setCurrentUser(data)
+          } else {
+            const email = session.user.email || ''
+            const username = email.split('@')[0].toLowerCase().replace(/[^a-z0-9]/g, '') || ('user' + Date.now())
+            const displayName = session.user.user_metadata?.display_name || email.split('@')[0] || 'ユーザー'
+            const { data: np } = await db.from('profiles').insert({
+              id: session.user.id,
+              username,
+              display_name: displayName,
+              status: 'online',
+              last_seen: new Date().toISOString(),
+            }).select().single()
+            if (np) setCurrentUser(np)
+          }
+        } catch (e) {
+          console.error('profile error:', e)
         }
-      } catch (err) {
-        console.error('Auth init error:', err)
-      } finally {
+      }
+      clearTimeout(timeout)
+      setLoading(false)
+    })
+
+    const { data: { subscription } } = supabase.auth.onAuthStateChange(async (event: string, session: any) => {
+      if (event === 'SIGNED_IN' && session?.user) {
+        try {
+          const { data } = await db.from('profiles').select('*').eq('id', session.user.id).maybeSingle()
+          if (data) {
+            setCurrentUser(data)
+          } else {
+            const email = session.user.email || ''
+            const username = email.split('@')[0].toLowerCase().replace(/[^a-z0-9]/g, '') || ('user' + Date.now())
+            const displayName = session.user.user_metadata?.display_name || email.split('@')[0] || 'ユーザー'
+            const { data: np } = await db.from('profiles').insert({
+              id: session.user.id,
+              username,
+              display_name: displayName,
+              status: 'online',
+              last_seen: new Date().toISOString(),
+            }).select().single()
+            if (np) setCurrentUser(np)
+          }
+        } catch (e) {
+          console.error('profile error:', e)
+        }
+        setLoading(false)
+      } else if (event === 'SIGNED_OUT') {
+        setCurrentUser(null)
         setLoading(false)
       }
-    }
-    init()
+    })
 
-    const { data: { subscription } } = supabase.auth.onAuthStateChange(
-      async (event: string, session: any) => {
-        if (event === 'SIGNED_IN' && session?.user) {
-          await fetchOrCreateProfile(session.user)
-          setLoading(false)
-        } else if (event === 'SIGNED_OUT') {
-          setCurrentUser(null)
-          setLoading(false)
-        }
-      }
-    )
-    return () => subscription.unsubscribe()
+    return () => {
+      clearTimeout(timeout)
+      subscription.unsubscribe()
+    }
   }, [])
-
-  const fetchOrCreateProfile = async (user: any) => {
-    try {
-      const { data } = await db.from('profiles').select('*').eq('id', user.id).maybeSingle()
-      if (data) {
-        setCurrentUser(data)
-      } else {
-        const email = user.email || ''
-        const username = email.split('@')[0].toLowerCase().replace(/[^a-z0-9]/g, '') || ('user' + Date.now())
-        const displayName = user.user_metadata?.display_name || email.split('@')[0] || 'ユーザー'
-        const { data: newProfile, error } = await db.from('profiles').insert({
-          id: user.id,
-          username,
-          display_name: displayName,
-          status: 'online',
-          last_seen: new Date().toISOString(),
-        }).select().single()
-        console.log('Insert result:', newProfile, error)
-        if (newProfile) setCurrentUser(newProfile)
-      }
-    } catch (err) {
-      console.error('fetchOrCreateProfile error:', err)
-    }
-  }
 
   const signIn = async (email: string, password: string) => {
     const { data, error } = await supabase.auth.signInWithPassword({ email, password })
@@ -69,8 +82,7 @@ export const useAuth = () => {
 
   const signUp = async (email: string, password: string, displayName: string) => {
     const { data, error } = await supabase.auth.signUp({
-      email,
-      password,
+      email, password,
       options: { data: { display_name: displayName } }
     })
     if (error) throw error
