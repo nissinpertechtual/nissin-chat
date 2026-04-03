@@ -11,7 +11,7 @@ export function useMessages(conversationId: string | null, currentUserId: string
     setLoading(true)
     const { data } = await supabase
       .from('messages')
-      .select('*, sender:users(*), reply_to:messages(*, sender:users(*))')
+      .select('*, sender:profiles(*), reply_to:messages(*, sender:profiles(*))')
       .eq('conversation_id', conversationId)
       .order('created_at', { ascending: true })
     setMessages(data || [])
@@ -36,7 +36,7 @@ export function useMessages(conversationId: string | null, currentUserId: string
         if (payload.eventType === 'INSERT') {
           supabase
             .from('messages')
-            .select('*, sender:users(*), reply_to:messages(*, sender:users(*))')
+            .select('*, sender:profiles(*), reply_to:messages(*, sender:profiles(*))')
             .eq('id', payload.new.id)
             .single()
             .then(({ data }) => {

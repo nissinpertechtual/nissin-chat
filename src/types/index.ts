@@ -1,12 +1,15 @@
 export interface User {
   id: string;
   email: string;
+  username?: string;
   display_name: string;
   avatar_url?: string;
+  status?: string;
+  last_seen?: string;
   created_at: string;
 }
 
-// Alias for compatibility
+// Alias for compatibility with existing code
 export type Profile = User;
 
 export interface TypingUser {

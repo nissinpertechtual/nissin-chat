@@ -34,7 +34,7 @@ export const ChatLayout = () => {
       if (conv) {
         supabase
           .from('conversation_members')
-          .select('user_id, users(*)')
+          .select('user_id, profiles(*)')
           .eq('conversation_id', conv.id)
           .then(({ data }) => {
             const users = (data || []).map((d: any) => d.users).filter(Boolean) as User[]

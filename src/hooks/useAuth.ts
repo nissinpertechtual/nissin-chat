@@ -13,7 +13,7 @@ export const useAuth = () => {
       try {
         const { data: { session } } = await supabase.auth.getSession()
         if (session?.user) {
-          await fetchOrCreateUser(session.user)
+          await fetchOrCreateProfile(session.user)
         }
       } catch (err) {
         console.error('Auth init error:', err)
@@ -25,9 +25,8 @@ export const useAuth = () => {
 
     const { data: { subscription } } = supabase.auth.onAuthStateChange(
       async (event: string, session: any) => {
-        console.log('Auth event:', event)
         if (event === 'SIGNED_IN' && session?.user) {
-          await fetchOrCreateUser(session.user)
+          await fetchOrCreateProfile(session.user)
           setLoading(false)
         } else if (event === 'SIGNED_OUT') {
           setCurrentUser(null)
@@ -38,26 +37,27 @@ export const useAuth = () => {
     return () => subscription.unsubscribe()
   }, [])
 
-  const fetchOrCreateUser = async (user: any) => {
+  const fetchOrCreateProfile = async (user: any) => {
     try {
-      console.log('Fetching user:', user.id)
-      const { data, error } = await db.from('users').select('*').eq('id', user.id).maybeSingle()
-      console.log('User data:', data, 'Error:', error)
+      const { data, error } = await db.from('profiles').select('*').eq('id', user.id).maybeSingle()
       if (data) {
         setCurrentUser(data)
       } else {
         const email = user.email || ''
+        const username = email.split('@')[0].toLowerCase().replace(/[^a-z0-9]/g, '') || ('user' + Date.now())
         const displayName = user.user_metadata?.display_name || email.split('@')[0] || 'ユーザー'
-        const { data: newUser, error: insertError } = await db.from('users').insert({
+        const { data: newProfile } = await db.from('profiles').insert({
           id: user.id,
           email,
+          username,
           display_name: displayName,
+          status: 'online',
+          last_seen: new Date().toISOString(),
         }).select().single()
-        console.log('New user:', newUser, 'Insert error:', insertError)
-        if (newUser) setCurrentUser(newUser)
+        if (newProfile) setCurrentUser(newProfile)
       }
     } catch (err) {
-      console.error('fetchOrCreateUser error:', err)
+      console.error('fetchOrCreateProfile error:', err)
     }
   }
 
