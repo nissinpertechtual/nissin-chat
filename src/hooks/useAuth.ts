@@ -9,14 +9,30 @@ export const useAuth = () => {
   const { currentUser, setCurrentUser } = useAppStore()
 
   useEffect(() => {
-    supabase.auth.getSession().then(async ({ data: { session } }: any) => {
-      if (session?.user) await fetchOrCreateUser(session.user)
-      else setLoading(false)
-    })
+    const init = async () => {
+      try {
+        const { data: { session } } = await supabase.auth.getSession()
+        if (session?.user) {
+          await fetchOrCreateUser(session.user)
+        }
+      } catch (err) {
+        console.error('Auth init error:', err)
+      } finally {
+        setLoading(false)
+      }
+    }
+    init()
+
     const { data: { subscription } } = supabase.auth.onAuthStateChange(
       async (event: string, session: any) => {
-        if (event === 'SIGNED_IN' && session?.user) await fetchOrCreateUser(session.user)
-        else if (event === 'SIGNED_OUT') { setCurrentUser(null); setLoading(false) }
+        console.log('Auth event:', event)
+        if (event === 'SIGNED_IN' && session?.user) {
+          await fetchOrCreateUser(session.user)
+          setLoading(false)
+        } else if (event === 'SIGNED_OUT') {
+          setCurrentUser(null)
+          setLoading(false)
+        }
       }
     )
     return () => subscription.unsubscribe()
@@ -24,23 +40,24 @@ export const useAuth = () => {
 
   const fetchOrCreateUser = async (user: any) => {
     try {
-      const { data } = await db.from('users').select('*').eq('id', user.id).maybeSingle()
+      console.log('Fetching user:', user.id)
+      const { data, error } = await db.from('users').select('*').eq('id', user.id).maybeSingle()
+      console.log('User data:', data, 'Error:', error)
       if (data) {
         setCurrentUser(data)
       } else {
         const email = user.email || ''
         const displayName = user.user_metadata?.display_name || email.split('@')[0] || 'ユーザー'
-        const { data: newUser } = await db.from('users').insert({
+        const { data: newUser, error: insertError } = await db.from('users').insert({
           id: user.id,
           email,
           display_name: displayName,
         }).select().single()
+        console.log('New user:', newUser, 'Insert error:', insertError)
         if (newUser) setCurrentUser(newUser)
       }
     } catch (err) {
-      console.error('User fetch error:', err)
-    } finally {
-      setLoading(false)
+      console.error('fetchOrCreateUser error:', err)
     }
   }
 
