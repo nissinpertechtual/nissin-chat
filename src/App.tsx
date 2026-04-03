@@ -1,3 +1,6 @@
+import { useEffect, useState } from 'react'
+import { supabase } from './services/supabase'
+import { useAppStore } from './services/store'
 import { useAuth } from './hooks/useAuth'
 import { AuthPage } from './pages/AuthPage'
 import { ChatLayout } from './pages/ChatLayout'
@@ -5,7 +8,8 @@ import { JoinPage } from './pages/JoinPage'
 import { Loader2 } from 'lucide-react'
 
 export default function App() {
-  const { loading, currentUser } = useAuth()
+  const { loading } = useAuth()
+  const { currentUser } = useAppStore()
 
   const path = window.location.pathname
   const joinMatch = path.match(/^\/join\/([a-f0-9-]+)$/)
