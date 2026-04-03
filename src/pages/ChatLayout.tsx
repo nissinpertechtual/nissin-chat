@@ -37,7 +37,7 @@ export const ChatLayout = () => {
           .select('user_id, profiles(*)')
           .eq('conversation_id', conv.id)
           .then(({ data }) => {
-            const users = (data || []).map((d: any) => d.users).filter(Boolean) as User[]
+            const users = (data || []).map((d: any) => d.profiles).filter(Boolean) as User[]
             setMembers(users)
           })
       }

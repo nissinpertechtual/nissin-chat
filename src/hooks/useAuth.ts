@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react'
+import { useEffect, useState } from 'react'
 import { supabase } from '../services/supabase'
 import { useAppStore } from '../services/store'
 
@@ -6,100 +6,72 @@ export const useAuth = () => {
   const [loading, setLoading] = useState(true)
   const setCurrentUser = useAppStore(state => state.setCurrentUser)
   const currentUser = useAppStore(state => state.currentUser)
-  const initialized = useRef(false)
-
-  const fetchOrCreateProfile = async (user: any) => {
-    try {
-      const { data, error } = await (supabase as any)
-        .from('profiles')
-        .select('*')
-        .eq('id', user.id)
-        .maybeSingle()
-
-      if (error) {
-        console.error('[useAuth] fetchProfile error:', error)
-        return null
-      }
-
-      if (data) {
-        setCurrentUser(data)
-        return data
-      }
-
-      // Profile not found, create one
-      const email = user.email || ''
-      const username = email.split('@')[0].toLowerCase().replace(/[^a-z0-9]/g, '') || ('user' + Date.now())
-      const displayName = user.user_metadata?.display_name || email.split('@')[0] || 'ユーザー'
-
-      const { data: np, error: insertError } = await (supabase as any)
-        .from('profiles')
-        .insert({
-          id: user.id,
-          username,
-          display_name: displayName,
-          status: 'online',
-          last_seen: new Date().toISOString(),
-        })
-        .select()
-        .single()
-
-      if (insertError) {
-        console.error('[useAuth] insertProfile error:', insertError)
-        return null
-      }
-
-      if (np) setCurrentUser(np)
-      return np
-    } catch (err) {
-      console.error('[useAuth] fetchOrCreateProfile threw:', err)
-      return null
-    }
-  }
 
   useEffect(() => {
-    if (initialized.current) return
-    initialized.current = true
+    let mounted = true
 
-    // Set a hard timeout so spinner never hangs forever
-    const timeout = setTimeout(() => {
-      console.warn('[useAuth] timeout - forcing loading=false')
-      setLoading(false)
-    }, 5000)
+    const fetchProfile = async (userId: string, email: string, meta: any) => {
+      try {
+        const { data } = await (supabase as any)
+          .from('profiles')
+          .select('*')
+          .eq('id', userId)
+          .maybeSingle()
 
-    // onAuthStateChange fires INITIAL_SESSION first, which replaces getSession()
+        if (!mounted) return
+
+        if (data) {
+          setCurrentUser(data)
+          return
+        }
+
+        // プロフィールがなければ作成
+        const username = (email || '').split('@')[0].toLowerCase().replace(/[^a-z0-9]/g, '') || ('user' + Date.now())
+        const displayName = meta?.display_name || (email || '').split('@')[0] || 'ユーザー'
+        const { data: np } = await (supabase as any)
+          .from('profiles')
+          .insert({ id: userId, username, display_name: displayName, status: 'online', last_seen: new Date().toISOString() })
+          .select()
+          .single()
+        if (mounted && np) setCurrentUser(np)
+      } catch (err) {
+        console.error('[useAuth] fetchProfile error:', err)
+      }
+    }
+
+    // まず現在のセッションを取得
+    supabase.auth.getSession().then(async ({ data }) => {
+      if (!mounted) return
+      const session = data?.session
+      if (session?.user) {
+        await fetchProfile(session.user.id, session.user.email || '', session.user.user_metadata)
+      }
+      if (mounted) setLoading(false)
+    }).catch((err) => {
+      console.error('[useAuth] getSession error:', err)
+      if (mounted) setLoading(false)
+    })
+
+    // 認証状態の変化を監視
     const { data: { subscription } } = supabase.auth.onAuthStateChange(async (event, session) => {
-      console.log('[useAuth] event:', event, 'user:', session?.user?.email)
-
-      if (event === 'INITIAL_SESSION') {
-        try {
-          if (session?.user) {
-            await fetchOrCreateProfile(session.user)
-          } else {
-            setCurrentUser(null)
-          }
-        } catch (err) {
-          console.error('[useAuth] INITIAL_SESSION handler error:', err)
-        } finally {
-          clearTimeout(timeout)
-          setLoading(false)
-        }
-      } else if (event === 'SIGNED_IN') {
-        try {
-          if (session?.user) {
-            await fetchOrCreateProfile(session.user)
-          }
-        } catch (err) {
-          console.error('[useAuth] SIGNED_IN handler error:', err)
-        } finally {
-          setLoading(false)
-        }
+      if (!mounted) return
+      console.log('[useAuth] auth event:', event)
+      if (event === 'SIGNED_IN' && session?.user) {
+        await fetchProfile(session.user.id, session.user.email || '', session.user.user_metadata)
+        if (mounted) setLoading(false)
       } else if (event === 'SIGNED_OUT') {
-        setCurrentUser(null)
-        setLoading(false)
+        if (mounted) { setCurrentUser(null); setLoading(false) }
       }
     })
 
+    // 5秒タイムアウト保険
+    const timeout = setTimeout(() => {
+      console.warn('[useAuth] 5s timeout - forcing loading=false')
+      if (mounted) setLoading(false)
+    }, 5000)
+
     return () => {
+      mounted = false
       clearTimeout(timeout)
       subscription.unsubscribe()
     }
@@ -113,8 +85,7 @@ export const useAuth = () => {
 
   const signUp = async (email: string, password: string, displayName: string) => {
     const { data, error } = await supabase.auth.signUp({
-      email,
-      password,
+      email, password,
       options: { data: { display_name: displayName } },
     })
     if (error) throw error
