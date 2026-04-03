@@ -6,6 +6,14 @@ export interface User {
   created_at: string;
 }
 
+// Alias for compatibility
+export type Profile = User;
+
+export interface TypingUser {
+  user_id: string;
+  display_name: string;
+}
+
 export interface ConversationMember {
   user_id: string;
   conversation_id: string;
@@ -20,6 +28,7 @@ export interface Conversation {
   is_group: boolean;
   created_by: string;
   created_at: string;
+  updated_at: string;
   announcement?: string;
   members?: ConversationMember[];
   last_message?: Message;
@@ -38,7 +47,7 @@ export interface Message {
   reply_to_id?: string;
   reply_to?: Message;
   is_pinned?: boolean;
-  is_muted?: boolean;
+  is_deleted?: boolean;
   created_at: string;
   updated_at: string;
   sender?: User;

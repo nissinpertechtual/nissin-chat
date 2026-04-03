@@ -58,8 +58,8 @@ export default function App() {
   }
 
   if (!user) {
-    return <AuthPage onLogin={setUser} />
+    return <AuthPage />
   }
 
-  return <ChatLayout user={user} />
+  return <ChatLayout />
 }

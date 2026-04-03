@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { BellOff, Bookmark, Settings, Plus } from 'lucide-react'
+import { Bell, BellOff, Bookmark, Settings, Plus } from 'lucide-react'
 import { KeepPanel } from '../phase1/KeepPanel'
 import type { Conversation, User } from '../../types'
 
