@@ -39,21 +39,21 @@ export const useAuth = () => {
 
   const fetchOrCreateProfile = async (user: any) => {
     try {
-      const { data, error } = await db.from('profiles').select('*').eq('id', user.id).maybeSingle()
+      const { data } = await db.from('profiles').select('*').eq('id', user.id).maybeSingle()
       if (data) {
         setCurrentUser(data)
       } else {
         const email = user.email || ''
         const username = email.split('@')[0].toLowerCase().replace(/[^a-z0-9]/g, '') || ('user' + Date.now())
         const displayName = user.user_metadata?.display_name || email.split('@')[0] || 'ユーザー'
-        const { data: newProfile } = await db.from('profiles').insert({
+        const { data: newProfile, error } = await db.from('profiles').insert({
           id: user.id,
-          email,
           username,
           display_name: displayName,
           status: 'online',
           last_seen: new Date().toISOString(),
         }).select().single()
+        console.log('Insert result:', newProfile, error)
         if (newProfile) setCurrentUser(newProfile)
       }
     } catch (err) {
