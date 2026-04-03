@@ -6,72 +6,53 @@ const db = supabase as any
 
 export const useAuth = () => {
   const [loading, setLoading] = useState(true)
-  const { currentUser, setCurrentUser } = useAppStore()
+  const setCurrentUser = useAppStore(state => state.setCurrentUser)
+  const currentUser = useAppStore(state => state.currentUser)
+
+  const fetchOrCreateProfile = async (user: any) => {
+    const { data } = await db.from('profiles').select('*').eq('id', user.id).maybeSingle()
+    if (data) {
+      setCurrentUser(data)
+      return data
+    } else {
+      const email = user.email || ''
+      const username = email.split('@')[0].toLowerCase().replace(/[^a-z0-9]/g, '') || ('user' + Date.now())
+      const displayName = user.user_metadata?.display_name || email.split('@')[0] || 'ユーザー'
+      const { data: np } = await db.from('profiles').insert({
+        id: user.id,
+        username,
+        display_name: displayName,
+        status: 'online',
+        last_seen: new Date().toISOString(),
+      }).select().single()
+      if (np) setCurrentUser(np)
+      return np
+    }
+  }
 
   useEffect(() => {
-    // Always stop loading after 3 seconds max
-    const timeout = setTimeout(() => setLoading(false), 3000)
-
     supabase.auth.getSession().then(async ({ data: { session } }: any) => {
-      if (session?.user) {
-        try {
-          const { data } = await db.from('profiles').select('*').eq('id', session.user.id).maybeSingle()
-          if (data) {
-            setCurrentUser(data)
-          } else {
-            const email = session.user.email || ''
-            const username = email.split('@')[0].toLowerCase().replace(/[^a-z0-9]/g, '') || ('user' + Date.now())
-            const displayName = session.user.user_metadata?.display_name || email.split('@')[0] || 'ユーザー'
-            const { data: np } = await db.from('profiles').insert({
-              id: session.user.id,
-              username,
-              display_name: displayName,
-              status: 'online',
-              last_seen: new Date().toISOString(),
-            }).select().single()
-            if (np) setCurrentUser(np)
-          }
-        } catch (e) {
-          console.error('profile error:', e)
-        }
+      try {
+        if (session?.user) await fetchOrCreateProfile(session.user)
+      } finally {
+        setLoading(false)
       }
-      clearTimeout(timeout)
-      setLoading(false)
     })
 
     const { data: { subscription } } = supabase.auth.onAuthStateChange(async (event: string, session: any) => {
       if (event === 'SIGNED_IN' && session?.user) {
         try {
-          const { data } = await db.from('profiles').select('*').eq('id', session.user.id).maybeSingle()
-          if (data) {
-            setCurrentUser(data)
-          } else {
-            const email = session.user.email || ''
-            const username = email.split('@')[0].toLowerCase().replace(/[^a-z0-9]/g, '') || ('user' + Date.now())
-            const displayName = session.user.user_metadata?.display_name || email.split('@')[0] || 'ユーザー'
-            const { data: np } = await db.from('profiles').insert({
-              id: session.user.id,
-              username,
-              display_name: displayName,
-              status: 'online',
-              last_seen: new Date().toISOString(),
-            }).select().single()
-            if (np) setCurrentUser(np)
-          }
-        } catch (e) {
-          console.error('profile error:', e)
+          await fetchOrCreateProfile(session.user)
+        } finally {
+          setLoading(false)
         }
-        setLoading(false)
       } else if (event === 'SIGNED_OUT') {
         setCurrentUser(null)
         setLoading(false)
       }
     })
 
-    return () => {
-      clearTimeout(timeout)
-      subscription.unsubscribe()
-    }
+    return () => subscription.unsubscribe()
   }, [])
 
   const signIn = async (email: string, password: string) => {
@@ -90,6 +71,7 @@ export const useAuth = () => {
   }
 
   const signOut = async () => {
+    setCurrentUser(null)
     await supabase.auth.signOut()
   }
 
