@@ -28,7 +28,7 @@ export function KeepPanel({ currentUserId, onJumpToConversation }: Props) {
   useEffect(() => {
     supabase
       .from('keeps')
-      .select('*, message:messages(id, content, message_type, conversation_id, created_at, sender:users(display_name))')
+      .select('*, message:messages(id, content, message_type, conversation_id, created_at, sender:profiles(display_name))')
       .eq('user_id', currentUserId)
       .order('created_at', { ascending: false })
       .then(({ data }) => {

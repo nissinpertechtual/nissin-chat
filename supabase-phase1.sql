@@ -10,6 +10,9 @@ ALTER TABLE public.conversations ADD COLUMN IF NOT EXISTS announcement TEXT;
 -- ミュート
 ALTER TABLE public.conversation_members ADD COLUMN IF NOT EXISTS is_muted BOOLEAN DEFAULT FALSE;
 
+-- 既読管理
+ALTER TABLE public.conversation_members ADD COLUMN IF NOT EXISTS last_read_at TIMESTAMPTZ;
+
 -- Keep
 CREATE TABLE IF NOT EXISTS public.keeps (
   id UUID DEFAULT uuid_generate_v4() PRIMARY KEY,

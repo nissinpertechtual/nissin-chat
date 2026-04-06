@@ -12,49 +12,74 @@ export const useConversations = () => {
   const fetchConversations = useCallback(async () => {
     if (!currentUser) return
     try {
-      const { data: memberData } = await db
-        .from('conversation_members').select('conversation_id, last_read_at').eq('user_id', currentUser.id)
+      const { data: memberData, error: memberError } = await db
+        .from('conversation_members')
+        .select('conversation_id, last_read_at')
+        .eq('user_id', currentUser.id)
+
+      if (memberError) {
+        console.error('conversation_members fetch error:', memberError)
+        // last_read_atが無い場合はカラムなしで再試行
+        const { data: memberDataFallback } = await db
+          .from('conversation_members')
+          .select('conversation_id')
+          .eq('user_id', currentUser.id)
+        if (!memberDataFallback?.length) { setConversations([]); return }
+        await fetchConvsFromIds(memberDataFallback.map((m: any) => m.conversation_id), [])
+        return
+      }
 
       if (!memberData?.length) { setConversations([]); return }
-      const convIds = memberData.map((m: any) => m.conversation_id)
-
-      const { data: convData } = await db
-        .from('conversations').select('*').in('id', convIds).order('updated_at', { ascending: false })
-
-      if (!convData) return
-
-      const enrichedConvs: Conversation[] = await Promise.all(
-        convData.map(async (conv: any) => {
-          const { data: members } = await db
-            .from('conversation_members').select('*, profile:profiles(*)').eq('conversation_id', conv.id)
-          const profiles = (members || []).map((m: any) => m.profile as Profile).filter(Boolean)
-
-          const { data: lastMsgData } = await db
-            .from('messages').select('*, sender:profiles(*)').eq('conversation_id', conv.id)
-            .eq('is_deleted', false).order('created_at', { ascending: false }).limit(1)
-          const lastMessage = lastMsgData?.[0] as Message | undefined
-
-          const memberRecord = memberData.find((m: any) => m.conversation_id === conv.id)
-          const lastReadAt = memberRecord?.last_read_at
-          let unreadCount = 0
-
-          const query = db.from('messages').select('*', { count: 'exact', head: true })
-            .eq('conversation_id', conv.id).neq('sender_id', currentUser.id).eq('is_deleted', false)
-          const { count } = lastReadAt ? await query.gt('created_at', lastReadAt) : await query
-          unreadCount = count || 0
-
-          return { ...conv, members: profiles, last_message: lastMessage || null, unread_count: unreadCount } as Conversation
-        })
+      await fetchConvsFromIds(
+        memberData.map((m: any) => m.conversation_id),
+        memberData
       )
-
-      enrichedConvs.sort((a, b) => {
-        const aTime = a.last_message?.created_at || a.updated_at
-        const bTime = b.last_message?.created_at || b.updated_at
-        return new Date(bTime).getTime() - new Date(aTime).getTime()
-      })
-      setConversations(enrichedConvs)
     } catch (err) { console.error('Error fetching conversations:', err) }
   }, [currentUser, setConversations])
+
+  const fetchConvsFromIds = async (convIds: string[], memberData: any[]) => {
+    const { data: convData } = await db
+      .from('conversations').select('*').in('id', convIds).order('updated_at', { ascending: false })
+
+    if (!convData) return
+
+    const enrichedConvs: Conversation[] = await Promise.all(
+      convData.map(async (conv: any) => {
+        const { data: members } = await db
+          .from('conversation_members').select('*, profile:profiles(*)').eq('conversation_id', conv.id)
+        const profiles = (members || []).map((m: any) => m.profile as Profile).filter(Boolean)
+
+        const { data: lastMsgData } = await db
+          .from('messages').select('*, sender:profiles(*)').eq('conversation_id', conv.id)
+          .order('created_at', { ascending: false }).limit(1)
+        const lastMessage = lastMsgData?.[0] as Message | undefined
+
+        // unread count: last_read_atがあれば使う、なければ0
+        let unreadCount = 0
+        try {
+          const memberRecord = memberData.find((m: any) => m.conversation_id === conv.id)
+          const lastReadAt = memberRecord?.last_read_at
+          if (lastReadAt) {
+            const { count } = await db.from('messages')
+              .select('*', { count: 'exact', head: true })
+              .eq('conversation_id', conv.id)
+              .neq('sender_id', currentUser!.id)
+              .gt('created_at', lastReadAt)
+            unreadCount = count || 0
+          }
+        } catch (_) { unreadCount = 0 }
+
+        return { ...conv, members: profiles, last_message: lastMessage || null, unread_count: unreadCount } as Conversation
+      })
+    )
+
+    enrichedConvs.sort((a, b) => {
+      const aTime = a.last_message?.created_at || a.updated_at
+      const bTime = b.last_message?.created_at || b.updated_at
+      return new Date(bTime).getTime() - new Date(aTime).getTime()
+    })
+    setConversations(enrichedConvs)
+  }
 
   const createDirectMessage = async (targetUserId: string): Promise<string | null> => {
     if (!currentUser) return null
@@ -91,7 +116,12 @@ export const useConversations = () => {
   const markAsRead = async (conversationId: string) => {
     if (!currentUser) return
     const now = new Date().toISOString()
-    await db.from('conversation_members').update({ last_read_at: now }).eq('conversation_id', conversationId).eq('user_id', currentUser.id)
+    try {
+      await db.from('conversation_members')
+        .update({ last_read_at: now })
+        .eq('conversation_id', conversationId)
+        .eq('user_id', currentUser.id)
+    } catch (_) { /* last_read_atカラムがない場合は無視 */ }
     updateConversation({ id: conversationId, unread_count: 0 })
   }
 
